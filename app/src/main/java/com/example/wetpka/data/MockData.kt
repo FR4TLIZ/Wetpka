@@ -21,7 +21,7 @@ object MockData {
             habitat = "Czyste, wolno płynące rzeki, jeziora nizinne, zbiorniki zaporowe z roślinnością",
             goodBites = "Wiosna, Jesień, Rano, Wieczorem",
             badBites = "Upalne dni letnie, Południe",
-            imageResId = R.drawable.ic_launcher_foreground
+            imageResId = R.drawable.szczupak
         ),
         Fish(
             id = 2,
@@ -37,7 +37,7 @@ object MockData {
             habitat = "Jeziora, stawy, rzeki, zbiorniki zaporowe",
             goodBites = "Późne lato, Jesień, Wczesny ranek",
             badBites = "Środek upalnego dnia",
-            imageResId = R.drawable.ic_launcher_foreground
+            imageResId = R.drawable.okon
         ),
         Fish(
             id = 3,
@@ -53,7 +53,7 @@ object MockData {
             habitat = "Ciepłe, płytkie wody, stawy hodowlane, jeziora z mulistym dnem",
             goodBites = "Ciepłe noce letnie, Wczesny ranek",
             badBites = "Nagłe ochłodzenia, Zima",
-            imageResId = R.drawable.ic_launcher_foreground
+            imageResId = R.drawable.karp
         ),
         Fish(
             id = 4,
@@ -69,7 +69,7 @@ object MockData {
             habitat = "Głębokie jeziora, duże rzeki o wolnym nurcie",
             goodBites = "Letnie noce, Wczesny świt",
             badBites = "Bardzo zimna woda",
-            imageResId = R.drawable.ic_launcher_foreground
+            imageResId = R.drawable.leszcz
         ),
         Fish(
             id = 5,
@@ -85,7 +85,7 @@ object MockData {
             habitat = "Głębsze rzeki, zbiorniki zaporowe z twardym, żwirowym dnem",
             goodBites = "Ciemne noce, Świt, Zmierzch",
             badBites = "Słoneczne dni w płytkiej wodzie",
-            imageResId = R.drawable.ic_launcher_foreground
+            imageResId = R.drawable.sandacz
         ),
         Fish(
             id = 6,
@@ -101,7 +101,7 @@ object MockData {
             habitat = "Prawie wszystkie wody słodkie, od rzek po małe stawy",
             goodBites = "Cały rok (najlepiej Wiosna i Jesień)",
             badBites = "Skrajne upały",
-            imageResId = R.drawable.ic_launcher_foreground
+            imageResId = R.drawable.ploc
         )
     )
 }
