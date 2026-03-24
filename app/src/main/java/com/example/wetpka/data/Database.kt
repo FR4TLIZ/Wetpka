@@ -68,7 +68,7 @@ abstract class AppDatabase : RoomDatabase() {
                                         dao.insertUser(
                                             User(
                                                 username = "jan.kowalski",
-                                                passwordHash = hashPassword("haslo123"),
+                                                passwordHash = "a15f8ae07675bfb96e084bfb4f52fb2c22091061aae86e0eb76a55f4e52dd74e",
                                                 firstName = "Jan",
                                                 lastName = "Kowalski",
                                                 cardNumber = "PZW-2024-001234",
@@ -84,7 +84,7 @@ abstract class AppDatabase : RoomDatabase() {
                                         dao.insertUser(
                                             User(
                                                 username = "anna.nowak",
-                                                passwordHash = hashPassword("wędka456"),
+                                                passwordHash = "9591ffd2c23f288ebbc982f702553da8f64177f95cae92867be608533cb1cf74",
                                                 firstName = "Anna",
                                                 lastName = "Nowak",
                                                 cardNumber = "PZW-2024-005678",
