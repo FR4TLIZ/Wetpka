@@ -1,6 +1,5 @@
 package com.example.wetpka.ui
 
-import android.content.Context
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -43,14 +42,16 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.wetpka.data.AppDatabase
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.wetpka.data.CatchRecord
 import com.example.wetpka.data.MockData
 import com.example.wetpka.model.Fish
-import com.example.wetpka.model.User
 import com.example.wetpka.model.WaterBody
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import com.example.wetpka.viewmodel.LogbookViewModel
+import com.example.wetpka.viewmodel.ProfileViewModel
 
 val filterOptions = listOf("Wszystkie", "Drapieżne", "Spokojnego żeru")
 
@@ -509,46 +510,39 @@ fun WaterBodyCard(waterBody: WaterBody, userLocation: android.location.Location?
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LogbookScreen(onNavigateToLogin: () -> Unit = {}) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val db = remember { com.example.wetpka.data.AppDatabase.getDatabase(context) }
+    val logbookViewModel: LogbookViewModel = viewModel()
+    val uiState by logbookViewModel.uiState.collectAsState()
+    val lifecycleOwner = LocalLifecycleOwner.current
 
-    var loggedInUsername by remember { mutableStateOf<String?>(null) }
-    var isLoading by remember { mutableStateOf(true) }
-    var useLocal by remember { mutableStateOf(false) }
-
-    LaunchedEffect(Unit) {
-        val savedId = getLoggedInUserId(context)
-        if (savedId != -1) {
-            val user = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                db.userDao().findById(savedId)
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                logbookViewModel.refreshSession()
             }
-            loggedInUsername = user?.username
-        } else {
-            loggedInUsername = null
         }
-        isLoading = false
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    if (isLoading) {
+    if (uiState.isLoading) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             CircularProgressIndicator()
         }
-    } else if (loggedInUsername != null) {
+    } else if (uiState.loggedInUsername != null) {
         LogbookContentScreen(
-            ownerUsername = loggedInUsername!!,
-            onLogout = {
-                clearLoggedInUser(context)
-                loggedInUsername = null
-            }
+            ownerUsername = uiState.loggedInUsername!!,
+            onLogout = { logbookViewModel.logout() },
+            logbookViewModel = logbookViewModel
         )
-    } else if (useLocal) {
+    } else if (uiState.useLocal) {
         LogbookContentScreen(
             ownerUsername = "localuser",
-            onLogout = { useLocal = false }
+            onLogout = { logbookViewModel.leaveLocalMode() },
+            logbookViewModel = logbookViewModel
         )
     } else {
         LogbookChoiceScreen(
-            onChooseLocal = { useLocal = true },
+            onChooseLocal = { logbookViewModel.chooseLocal() },
             onChooseLogin = onNavigateToLogin
         )
     }
@@ -626,11 +620,13 @@ fun LogbookChoiceScreen(onChooseLocal: () -> Unit, onChooseLogin: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun LogbookContentScreen(ownerUsername: String, onLogout: () -> Unit) {
+fun LogbookContentScreen(
+    ownerUsername: String,
+    onLogout: () -> Unit,
+    logbookViewModel: LogbookViewModel = viewModel()
+) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    val db = remember { com.example.wetpka.data.AppDatabase.getDatabase(context) }
-    val catchDao = db.catchDao()
-    val catches by catchDao.getCatchesByOwner(ownerUsername).collectAsState(initial = emptyList())
+    val catches by logbookViewModel.catches.collectAsState(initial = emptyList())
 
     val sortedCatches = catches.sortedByDescending { record ->
         try {
@@ -643,8 +639,7 @@ fun LogbookContentScreen(ownerUsername: String, onLogout: () -> Unit) {
 
     var showAddDialog by remember { mutableStateOf(false) }
     var showVideoPlayer by remember { mutableStateOf(false) }
-    var recordToEdit by remember { mutableStateOf<com.example.wetpka.data.CatchRecord?>(null) }
-    val coroutineScope = rememberCoroutineScope()
+    var recordToEdit by remember { mutableStateOf<CatchRecord?>(null) }
 
     Scaffold(
         topBar = {
@@ -899,24 +894,20 @@ fun LogbookContentScreen(ownerUsername: String, onLogout: () -> Unit) {
 
                     val finalSpot = if (spot.trim().isEmpty()) "-" else spot.trim()
 
-                    val newRecord = com.example.wetpka.data.CatchRecord(
+                    val newRecord = CatchRecord(
                         id = currentRecordId,
                         ownerUsername = ownerUsername,
                         date = date, time = time, spotNumber = finalSpot, fishSpecies = species,
                         pieces = p, totalWeight = roundedWeight, length = roundedLength
                     )
 
-                    coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                        if (!isEditMode) {
-                            val mediaPlayer = android.media.MediaPlayer.create(context, com.example.wetpka.R.raw.gulp)
-                            mediaPlayer.setVolume(1.0f, 1.0f)
-                            mediaPlayer.start()
-                            mediaPlayer.setOnCompletionListener { it.release() }
-                            catchDao.insertCatch(newRecord)
-                        } else {
-                            catchDao.updateCatch(newRecord)
-                        }
+                    if (!isEditMode) {
+                        val mediaPlayer = android.media.MediaPlayer.create(context, com.example.wetpka.R.raw.gulp)
+                        mediaPlayer.setVolume(1.0f, 1.0f)
+                        mediaPlayer.start()
+                        mediaPlayer.setOnCompletionListener { it.release() }
                     }
+                    logbookViewModel.saveCatch(newRecord, isEditMode)
 
                     showAddDialog = false
                     recordToEdit = null
@@ -929,9 +920,7 @@ fun LogbookContentScreen(ownerUsername: String, onLogout: () -> Unit) {
                         TextButton(onClick = {
                             val recordToDelete = recordToEdit
                             if (recordToDelete != null) {
-                                coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                                    catchDao.deleteCatch(recordToDelete)
-                                }
+                                logbookViewModel.deleteCatch(recordToDelete)
                             }
                             showAddDialog = false
                             recordToEdit = null
@@ -949,90 +938,52 @@ fun LogbookContentScreen(ownerUsername: String, onLogout: () -> Unit) {
     }
 }
 
-private fun saveLoggedInUserId(context: android.content.Context, userId: Int) {
-    context.getSharedPreferences("auth", android.content.Context.MODE_PRIVATE)
-        .edit().putInt("logged_in_user_id", userId).apply()
-}
-
-private fun getLoggedInUserId(context: android.content.Context): Int {
-    return context.getSharedPreferences("auth", android.content.Context.MODE_PRIVATE)
-        .getInt("logged_in_user_id", -1)
-}
-
-private fun clearLoggedInUser(context: android.content.Context) {
-    context.getSharedPreferences("auth", android.content.Context.MODE_PRIVATE)
-        .edit().remove("logged_in_user_id").apply()
-}
-
-private fun localHashPassword(password: String): String {
-    val bytes = java.security.MessageDigest.getInstance("SHA-256").digest(password.toByteArray())
-    return bytes.joinToString("") { "%02x".format(it) }
-}
-
 @Composable
 fun ProfileScreen() {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val db = remember { com.example.wetpka.data.AppDatabase.getDatabase(context) }
+    val profileViewModel: ProfileViewModel = viewModel()
+    val uiState by profileViewModel.uiState.collectAsState()
+    val catches by profileViewModel.catches.collectAsState(initial = emptyList())
+    val lifecycleOwner = LocalLifecycleOwner.current
 
-    var loggedInUser by remember { mutableStateOf<com.example.wetpka.model.User?>(null) }
-    var isLoading by remember { mutableStateOf(true) }
-
-    LaunchedEffect(Unit) {
-        val savedId = getLoggedInUserId(context)
-        if (savedId != -1) {
-            loggedInUser = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                db.userDao().findById(savedId)
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                profileViewModel.loadSession()
             }
         }
-        isLoading = false
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    if (isLoading) {
+    if (uiState.isLoading) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             CircularProgressIndicator()
         }
-    } else if (loggedInUser != null) {
+    } else if (uiState.loggedInUser != null) {
         LegitymacjaScreen(
-            user = loggedInUser!!,
-            onLogout = {
-                clearLoggedInUser(context)
-                loggedInUser = null
-            }
+            user = uiState.loggedInUser!!,
+            catches = catches,
+            onLogout = { profileViewModel.logout() }
         )
     } else {
         LoginScreen(
-            onLoginSuccess = { user ->
-                saveLoggedInUserId(context, user.id)
-                loggedInUser = user
-            }
+            onLogin = { username, password -> profileViewModel.login(username, password) },
+            errorMessage = uiState.loginError,
+            onClearError = { profileViewModel.clearLoginError() }
         )
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun LoginScreen(onLoginSuccess: (com.example.wetpka.model.User) -> Unit) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val db = remember { com.example.wetpka.data.AppDatabase.getDatabase(context) }
-    val coroutineScope = rememberCoroutineScope()
-
+fun LoginScreen(
+    onLogin: (String, String) -> Unit,
+    errorMessage: String?,
+    onClearError: () -> Unit
+) {
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
     var passwordVisible by remember { mutableStateOf(false) }
-
-    val doLogin: () -> Unit = {
-        coroutineScope.launch {
-            val user: com.example.wetpka.model.User? = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                db.userDao().findByUsername(username.trim())
-            }
-            if (user != null && user.passwordHash == localHashPassword(password)) {
-                onLoginSuccess(user)
-            } else {
-                errorMessage = "Nieprawidłowe dane logowania."
-            }
-        }
-    }
 
     Box(
         modifier = Modifier
@@ -1076,7 +1027,7 @@ fun LoginScreen(onLoginSuccess: (com.example.wetpka.model.User) -> Unit) {
             ) {
                 OutlinedTextField(
                     value = username,
-                    onValueChange = { username = it; errorMessage = null },
+                    onValueChange = { username = it; onClearError() },
                     label = { Text("Nazwa użytkownika") },
                     leadingIcon = { Icon(painterResource(id = android.R.drawable.ic_dialog_email), contentDescription = null) },
                     modifier = Modifier.fillMaxWidth(),
@@ -1098,7 +1049,7 @@ fun LoginScreen(onLoginSuccess: (com.example.wetpka.model.User) -> Unit) {
 
                 OutlinedTextField(
                     value = password,
-                    onValueChange = { password = it; errorMessage = null },
+                    onValueChange = { password = it; onClearError() },
                     label = { Text("Hasło") },
                     leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
                     trailingIcon = {
@@ -1118,7 +1069,7 @@ fun LoginScreen(onLoginSuccess: (com.example.wetpka.model.User) -> Unit) {
                         imeAction = ImeAction.Done
                     ),
                     keyboardActions = KeyboardActions(
-                        onDone = { doLogin() }
+                        onDone = { onLogin(username, password) }
                     ),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = Color(0xFF1E5370),
@@ -1140,7 +1091,7 @@ fun LoginScreen(onLoginSuccess: (com.example.wetpka.model.User) -> Unit) {
                 Spacer(modifier = Modifier.height(32.dp))
 
                 Button(
-                    onClick = { doLogin() },
+                    onClick = { onLogin(username, password) },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(50.dp),
@@ -1183,11 +1134,7 @@ private fun formatMonthYear(mmYyyy: String): String {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun LegitymacjaScreen(user: com.example.wetpka.model.User, onLogout: () -> Unit) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val db = remember { com.example.wetpka.data.AppDatabase.getDatabase(context) }
-    val catches by db.catchDao().getCatchesByOwner(user.username).collectAsState(initial = emptyList())
-
+fun LegitymacjaScreen(user: com.example.wetpka.model.User, catches: List<CatchRecord>, onLogout: () -> Unit) {
     val totalFish = catches.sumOf { it.pieces }
     val heaviestCatch = catches.maxByOrNull { it.totalWeight }
     val longestCatch = catches.maxByOrNull { it.length }
