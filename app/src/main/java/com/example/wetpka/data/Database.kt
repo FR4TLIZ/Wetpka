@@ -47,7 +47,7 @@ private fun hashPassword(password: String): String {
 }
 
 // 3. Główna klasa Bazy Danych
-@Database(entities = [CatchRecord::class, User::class], version = 5, exportSchema = false)
+@Database(entities = [CatchRecord::class, User::class], version = 6, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun catchDao(): CatchDao
     abstract fun userDao(): UserDao
@@ -79,7 +79,10 @@ abstract class AppDatabase : RoomDatabase() {
                                                 district = "Okręg PZW Wrocław",
                                                 validFrom = "01.01.2024",
                                                 validTo = "31.12.2026",
-                                                memberSince = "2018"
+                                                memberSince = "2018",
+                                                membershipPaidTo = "06.2026",
+                                                permitValidTo = "06.2026",
+                                                seaPermitValidTo = "06.2026"
                                             )
                                         )
                                         dao.insertUser(
@@ -92,7 +95,10 @@ abstract class AppDatabase : RoomDatabase() {
                                                 district = "Okręg PZW Kraków",
                                                 validFrom = "01.01.2025",
                                                 validTo = "31.12.2026",
-                                                memberSince = "2020"
+                                                memberSince = "2020",
+                                                membershipPaidTo = "06.2026",
+                                                permitValidTo = "12.2025",
+                                                seaPermitValidTo = ""
                                             )
                                         )
                                     }

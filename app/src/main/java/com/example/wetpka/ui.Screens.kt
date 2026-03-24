@@ -1197,6 +1197,35 @@ fun LoginScreen(onLoginSuccess: (com.example.wetpka.model.User) -> Unit) {
     }
 }
 
+// Pomocnicza: parsuje "MM.yyyy" i sprawdza czy data jest w przyszłości (lub bieżący miesiąc)
+private fun isDateValid(mmYyyy: String): Boolean {
+    if (mmYyyy.isBlank()) return false
+    return try {
+        val parts = mmYyyy.split(".")
+        val month = parts[0].toInt()
+        val year = parts[1].toInt()
+        val cal = java.util.Calendar.getInstance()
+        val currentYear = cal.get(java.util.Calendar.YEAR)
+        val currentMonth = cal.get(java.util.Calendar.MONTH) + 1
+        year > currentYear || (year == currentYear && month >= currentMonth)
+    } catch (e: Exception) { false }
+}
+
+// Pomocnicza: "MM.yyyy" → "czerwiec 2026" itd.
+private fun formatMonthYear(mmYyyy: String): String {
+    if (mmYyyy.isBlank()) return ""
+    return try {
+        val parts = mmYyyy.split(".")
+        val month = parts[0].toInt()
+        val year = parts[1].toInt()
+        val monthNames = listOf(
+            "styczeń", "luty", "marzec", "kwiecień", "maj", "czerwiec",
+            "lipiec", "sierpień", "wrzesień", "październik", "listopad", "grudzień"
+        )
+        "${monthNames[month - 1]} $year"
+    } catch (e: Exception) { mmYyyy }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LegitymacjaScreen(user: com.example.wetpka.model.User, onLogout: () -> Unit) {
@@ -1207,6 +1236,15 @@ fun LegitymacjaScreen(user: com.example.wetpka.model.User, onLogout: () -> Unit)
     val totalFish = catches.sumOf { it.pieces }
     val heaviestCatch = catches.maxByOrNull { it.totalWeight }
     val longestCatch = catches.maxByOrNull { it.length }
+
+    // Ważność składki
+    val membershipValid = isDateValid(user.membershipPaidTo)
+    val membershipText = if (user.membershipPaidTo.isBlank()) "Brak informacji"
+        else formatMonthYear(user.membershipPaidTo)
+
+    // Ważność zezwoleń
+    val permitValid = if (user.permitValidTo.isBlank()) null else isDateValid(user.permitValidTo)
+    val seaPermitValid = if (user.seaPermitValidTo.isBlank()) null else isDateValid(user.seaPermitValidTo)
 
     Scaffold(
         topBar = {
@@ -1235,6 +1273,7 @@ fun LegitymacjaScreen(user: com.example.wetpka.model.User, onLogout: () -> Unit)
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
 
+            // Karta z danymi użytkownika
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
@@ -1264,20 +1303,65 @@ fun LegitymacjaScreen(user: com.example.wetpka.model.User, onLogout: () -> Unit)
                 }
             }
 
-            InfoCard(
+            // Opłacenie składek
+            PermitCard(
                 iconId = android.R.drawable.ic_menu_myplaces,
                 title = "Opłacenie składek",
-                line1 = "Składka członkowska: Opłacona do",
-                line2 = "czerwca 2026 ✓"
+                label = "Składka członkowska: Opłacona do",
+                dateText = membershipText,
+                isValid = membershipValid
             )
 
-            InfoCard(
-                iconId = android.R.drawable.ic_menu_agenda,
-                title = "Ważność Zezwolenia",
-                line1 = "Ważność zezwoleń",
-                line2 = "Zezwolenie zwykłe: Ważne do czerwca 2026\nZezwolenie morskie: Ważne do czerwca 2026"
-            )
+            // Ważność Zezwolenia
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            painter = painterResource(id = android.R.drawable.ic_menu_agenda),
+                            contentDescription = null,
+                            modifier = Modifier.size(40.dp),
+                            tint = Color(0xFF1E5370)
+                        )
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Text("Ważność Zezwolenia", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
 
+                    // Zezwolenie zwykłe
+                    Row {
+                        Text("Zezwolenie zwykłe: ", fontSize = 13.sp, color = Color.DarkGray)
+                        if (permitValid == null) {
+                            Text("BRAK", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.Gray)
+                        } else {
+                            val pColor = if (permitValid) Color(0xFF2E7D32) else Color.Red
+                            Text("Ważne do ", fontSize = 13.sp, color = Color.DarkGray)
+                            Text(formatMonthYear(user.permitValidTo) + if (permitValid) " ✓" else " ✗", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = pColor)
+                        }
+                    }
+
+                    // Zezwolenie morskie
+                    Row {
+                        Text("Zezwolenie morskie: ", fontSize = 13.sp, color = Color.DarkGray)
+                        if (seaPermitValid == null) {
+                            Text("BRAK", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.Gray)
+                        } else {
+                            val sColor = if (seaPermitValid) Color(0xFF2E7D32) else Color.Red
+                            Text("Ważne do ", fontSize = 13.sp, color = Color.DarkGray)
+                            Text(formatMonthYear(user.seaPermitValidTo) + if (seaPermitValid) " ✓" else " ✗", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = sColor)
+                        }
+                    }
+                }
+            }
+
+            // Statystyki
             if (catches.isEmpty()) {
                 InfoCard(
                     iconId = android.R.drawable.star_on,
@@ -1313,6 +1397,50 @@ fun LegitymacjaScreen(user: com.example.wetpka.model.User, onLogout: () -> Unit)
             }
 
             Spacer(modifier = Modifier.height(24.dp))
+        }
+    }
+}
+
+@Composable
+fun PermitCard(iconId: Int, title: String, label: String, dateText: String, isValid: Boolean) {
+    val statusColor = if (isValid) Color(0xFF2E7D32) else Color.Red
+    val statusIcon = if (isValid) "✓" else "✗"
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                painter = painterResource(id = iconId),
+                contentDescription = null,
+                modifier = Modifier.size(40.dp),
+                tint = Color(0xFF1E5370)
+            )
+            Spacer(modifier = Modifier.width(16.dp))
+            Column {
+                Text(title, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                Text(label, fontSize = 14.sp)
+                Row {
+                    Text(
+                        dateText,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = statusColor
+                    )
+                    Text(
+                        " $statusIcon",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = statusColor
+                    )
+                }
+            }
         }
     }
 }
