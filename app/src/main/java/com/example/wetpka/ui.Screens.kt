@@ -1,7 +1,9 @@
 package com.example.wetpka.ui
 
+import android.content.Context
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -10,25 +12,40 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ExitToApp
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.wetpka.data.AppDatabase
 import com.example.wetpka.data.MockData
 import com.example.wetpka.model.Fish
+import com.example.wetpka.model.User
 import com.example.wetpka.model.WaterBody
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 // To są nazwy naszych filtrów (pigułek u góry)
 val filterOptions = listOf("Wszystkie", "Drapieżne", "Spokojnego żeru")
@@ -820,10 +837,325 @@ fun LogbookScreen() {
     }
 }
 
+// ===================== EKRAN LEGITYMACJA (z logowaniem) =====================
+
+// Pomocnicza funkcja do zapisu/odczytu zalogowanego użytkownika
+private fun saveLoggedInUserId(context: android.content.Context, userId: Int) {
+    context.getSharedPreferences("auth", android.content.Context.MODE_PRIVATE)
+        .edit().putInt("logged_in_user_id", userId).apply()
+}
+
+private fun getLoggedInUserId(context: android.content.Context): Int {
+    return context.getSharedPreferences("auth", android.content.Context.MODE_PRIVATE)
+        .getInt("logged_in_user_id", -1)
+}
+
+private fun clearLoggedInUser(context: android.content.Context) {
+    context.getSharedPreferences("auth", android.content.Context.MODE_PRIVATE)
+        .edit().remove("logged_in_user_id").apply()
+}
+
+// Lokalna funkcja hashowania (omija problem z importami od Copilota)
+private fun localHashPassword(password: String): String {
+    val bytes = java.security.MessageDigest.getInstance("SHA-256").digest(password.toByteArray())
+    return bytes.joinToString("") { "%02x".format(it) }
+}
+
 @Composable
 fun ProfileScreen() {
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Text("Tu będzie Legitymacja")
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val db = remember { com.example.wetpka.data.AppDatabase.getDatabase(context) }
+
+    // Wymuszona pełna ścieżka do modelu User
+    var loggedInUser by remember { mutableStateOf<com.example.wetpka.model.User?>(null) }
+    var isLoading by remember { mutableStateOf(true) }
+
+    LaunchedEffect(Unit) {
+        val savedId = getLoggedInUserId(context)
+        if (savedId != -1) {
+            loggedInUser = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                db.userDao().findById(savedId)
+            }
+        }
+        isLoading = false
+    }
+
+    if (isLoading) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator()
+        }
+    } else if (loggedInUser != null) {
+        LegitymacjaScreen(
+            user = loggedInUser!!,
+            onLogout = {
+                clearLoggedInUser(context)
+                loggedInUser = null
+            }
+        )
+    } else {
+        LoginScreen(
+            onLoginSuccess = { user ->
+                saveLoggedInUserId(context, user.id)
+                loggedInUser = user
+            }
+        )
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun LoginScreen(onLoginSuccess: (com.example.wetpka.model.User) -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val db = remember { com.example.wetpka.data.AppDatabase.getDatabase(context) }
+    val coroutineScope = rememberCoroutineScope()
+
+    var username by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+    var passwordVisible by remember { mutableStateOf(false) }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFFE2EAF1))
+    ) {
+        Icon(
+            painter = painterResource(id = android.R.drawable.ic_menu_crop),
+            contentDescription = "Logo",
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 80.dp)
+                .size(64.dp),
+            tint = Color(0xFF1E5370)
+        )
+
+        Text(
+            text = "Logowanie",
+            fontSize = 28.sp,
+            fontWeight = FontWeight.Bold,
+            color = Color.Black,
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 160.dp)
+        )
+
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .align(Alignment.Center)
+                .offset(y = (-40).dp),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                OutlinedTextField(
+                    value = username,
+                    onValueChange = { username = it; errorMessage = null },
+                    label = { Text("Adres e-mail lub Nr Karty PZW") },
+                    leadingIcon = { Icon(painterResource(id = android.R.drawable.ic_dialog_email), contentDescription = null) },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(8.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Color(0xFF1E5370),
+                        unfocusedBorderColor = Color.Gray
+                    )
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it; errorMessage = null },
+                    label = { Text("Hasło") },
+                    leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
+                    trailingIcon = {
+                        val icon = if (passwordVisible) android.R.drawable.ic_menu_view else android.R.drawable.ic_secure
+                        IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                            Icon(painter = painterResource(id = icon), contentDescription = "Pokaż hasło")
+                        }
+                    },
+                    visualTransformation = if (passwordVisible) androidx.compose.ui.text.input.VisualTransformation.None else PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(8.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Color(0xFF1E5370),
+                        unfocusedBorderColor = Color.Gray
+                    )
+                )
+
+                if (errorMessage != null) {
+                    Text(
+                        text = errorMessage!!,
+                        color = Color.Red,
+                        fontSize = 12.sp,
+                        modifier = Modifier
+                            .padding(top = 8.dp)
+                            .align(Alignment.Start)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(32.dp))
+
+                Button(
+                    onClick = {
+                        coroutineScope.launch {
+                            // Pełna ścieżka do modelu User rozwiązuje problem type mismatch!
+                            val user: com.example.wetpka.model.User? = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                db.userDao().findByUsername(username.trim())
+                            }
+
+                            if (user != null && user.passwordHash == localHashPassword(password)) {
+                                onLoginSuccess(user)
+                            } else {
+                                errorMessage = "Nieprawidłowe dane logowania."
+                            }
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(50.dp),
+                    shape = RoundedCornerShape(25.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E5370))
+                ) {
+                    Text("Zaloguj się", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun LegitymacjaScreen(user: com.example.wetpka.model.User, onLogout: () -> Unit) {
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Legitymacja Wędkarska", fontWeight = FontWeight.Bold) },
+                navigationIcon = {
+                    IconButton(onClick = onLogout) {
+                        Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Wyloguj")
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { /* Opcjonalne pole */ }) {
+                        Icon(painter = painterResource(id = android.R.drawable.ic_menu_sort_by_size), contentDescription = "Waga")
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFFE2EAF1))
+            )
+        }
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color(0xFFE2EAF1))
+                .padding(innerPadding)
+                .padding(horizontal = 16.dp)
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(70.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFFC5D1B8)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.Person, contentDescription = null, modifier = Modifier.size(40.dp))
+                    }
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Column {
+                        Text("Imię: ${user.firstName} ${user.lastName}", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        Text("Przynależność: ${user.district}", fontSize = 14.sp)
+                        Text("Nr Karty: ${user.cardNumber}", fontSize = 14.sp)
+                    }
+                }
+            }
+
+            InfoCard(
+                iconId = android.R.drawable.ic_menu_myplaces,
+                title = "Opłacenie składek",
+                line1 = "Składka członkowska: Opłacona do",
+                line2 = "czerwca 2026 ✓"
+            )
+
+            InfoCard(
+                iconId = android.R.drawable.ic_menu_agenda,
+                title = "Ważność Zezwolenia",
+                line1 = "Ważność zezwoleń",
+                line2 = "Zezwolenie zwykłe: Ważne do czerwca 2026\nZezwolenie morskie: Ważne do czerwca 2026"
+            )
+
+            InfoCard(
+                iconId = android.R.drawable.star_on,
+                title = "Statystyki Ogólne",
+                line1 = "Statystyki połowów",
+                line2 = "Liczba złowionych ryb (ogółem): 128\nW tym sezonie: 45"
+            )
+
+            InfoCard(
+                iconId = android.R.drawable.ic_menu_sort_by_size,
+                title = "Rekord Wagowy",
+                line1 = "Najcięższa ryba",
+                line2 = "Szczupak Pospolity: 8.2 kg\nZłowiono: 12.05.2023, Jezioro Śniardwy"
+            )
+
+            InfoCard(
+                iconId = android.R.drawable.ic_menu_edit,
+                title = "Rekord Długości",
+                line1 = "Najdłuższa ryba",
+                line2 = "Karp Pospolity: 95 cm\nZłowiono: 20.08.2023, Rzeka Odra"
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+        }
+    }
+}
+
+@Composable
+fun InfoCard(iconId: Int, title: String, line1: String, line2: String) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                painter = painterResource(id = iconId),
+                contentDescription = null,
+                modifier = Modifier.size(40.dp),
+                tint = Color(0xFF1E5370)
+            )
+            Spacer(modifier = Modifier.width(16.dp))
+            Column {
+                Text(title, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                Text(line1, fontSize = 14.sp)
+                Text(line2, fontSize = 14.sp, color = Color.DarkGray)
+            }
+        }
+    }
+}
