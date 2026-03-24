@@ -7,6 +7,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -24,6 +25,7 @@ import androidx.compose.ui.unit.sp
 import com.example.wetpka.data.MockData
 import com.example.wetpka.model.Fish
 import com.example.wetpka.model.WaterBody
+import kotlinx.coroutines.launch
 
 // To są nazwy naszych filtrów (pigułek u góry)
 val filterOptions = listOf("Wszystkie", "Drapieżne", "Spokojnego żeru")
@@ -507,10 +509,157 @@ fun WaterBodyCard(waterBody: WaterBody, userLocation: android.location.Location?
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LogbookScreen() {
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Text("Tu będzie Rejestr Połowów")
+    val context = androidx.compose.ui.platform.LocalContext.current
+    // Podłączamy bazę danych
+    val db = remember { com.example.wetpka.data.AppDatabase.getDatabase(context) }
+    val catchDao = db.catchDao()
+    // Pobieramy listę połowów, która automatycznie się aktualizuje!
+    val catches by catchDao.getAllCatches().collectAsState(initial = emptyList())
+    // Stan do obsługi wyskakującego okienka dodawania
+    var showAddDialog by remember { mutableStateOf(false) }
+    val coroutineScope = rememberCoroutineScope()
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Rejestr Połowów", fontWeight = FontWeight.Bold) },
+                actions = {
+                    IconButton(onClick = { }) { Icon(Icons.Default.Search, contentDescription = "Szukaj") }
+                }
+            )
+        },
+        floatingActionButton = {
+            // Przycisk PLUS w prawym dolnym rogu
+            FloatingActionButton(
+                onClick = { showAddDialog = true },
+                containerColor = MaterialTheme.colorScheme.primary
+            ) {
+                Text("+", fontSize = 24.sp, color = MaterialTheme.colorScheme.onPrimary)
+            }
+        }
+    ) { innerPadding ->
+        Column(modifier = Modifier.padding(innerPadding).fillMaxSize().padding(horizontal = 16.dp)) {
+
+            // 1. Zastępstwo wideo-poradnika
+            Card(
+                modifier = Modifier.fillMaxWidth().height(180.dp).padding(bottom = 16.dp),
+                shape = MaterialTheme.shapes.large,
+                colors = CardDefaults.cardColors(containerColor = androidx.compose.ui.graphics.Color.DarkGray)
+            ) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            painter = painterResource(android.R.drawable.ic_media_play),
+                            contentDescription = "Play",
+                            modifier = Modifier.size(64.dp),
+                            tint = androidx.compose.ui.graphics.Color.White
+                        )
+                        Text(
+                            text = "Poradnik Wideo: Jak prowadzić Rejestr",
+                            color = androidx.compose.ui.graphics.Color.White,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
+                    }
+                }
+            }
+
+            // 2. Nagłówki Tabeli
+            Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("L.p.", fontWeight = FontWeight.Bold, fontSize = 12.sp, modifier = Modifier.weight(0.5f))
+                Text("Data", fontWeight = FontWeight.Bold, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                Text("Godzina", fontWeight = FontWeight.Bold, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                Text("Łowisko", fontWeight = FontWeight.Bold, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                Text("Gatunek", fontWeight = FontWeight.Bold, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                Text("Szt", fontWeight = FontWeight.Bold, fontSize = 12.sp, modifier = Modifier.weight(0.5f))
+                Text("Waga", fontWeight = FontWeight.Bold, fontSize = 12.sp, modifier = Modifier.weight(0.8f))
+                Text("Dł.", fontWeight = FontWeight.Bold, fontSize = 12.sp, modifier = Modifier.weight(0.6f))
+            }
+
+            // 3. Właściwa lista ryb z bazy danych
+            androidx.compose.foundation.lazy.LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                itemsIndexed(catches) { index, record ->
+                    ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+                        Row(modifier = Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("${index + 1}", fontSize = 12.sp, modifier = Modifier.weight(0.5f))
+                            Text(record.date, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                            Text(record.time, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                            Text(record.spotNumber, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                            Text(record.fishSpecies, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                            Text("${record.pieces}", fontSize = 12.sp, modifier = Modifier.weight(0.5f))
+                            Text("${record.totalWeight}", fontSize = 12.sp, modifier = Modifier.weight(0.8f))
+                            Text("${record.length}", fontSize = 12.sp, modifier = Modifier.weight(0.6f))
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Okienko dialogowe dodawania połowu
+    if (showAddDialog) {
+        var date by remember { mutableStateOf("16.10.2023") }
+        var time by remember { mutableStateOf("12:00") }
+        var spot by remember { mutableStateOf("18") }
+        var species by remember { mutableStateOf(com.example.wetpka.data.MockData.fishes[0].name) }
+        var pieces by remember { mutableStateOf("1") }
+        var weight by remember { mutableStateOf("2.0") }
+        var length by remember { mutableStateOf("50") }
+
+        var expanded by remember { mutableStateOf(false) } // Do rozwijanej listy gatunków
+
+        AlertDialog(
+            onDismissRequest = { showAddDialog = false },
+            title = { Text("Dodaj nowy połów") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(value = date, onValueChange = { date = it }, label = { Text("Data") })
+                    OutlinedTextField(value = time, onValueChange = { time = it }, label = { Text("Godzina") })
+                    OutlinedTextField(value = spot, onValueChange = { spot = it }, label = { Text("Nr łowiska") })
+
+                    // Rozwijana lista ryb
+                    Box {
+                        OutlinedTextField(
+                            value = species, onValueChange = {}, label = { Text("Gatunek (Z Atlasu)") },
+                            readOnly = true, trailingIcon = { IconButton(onClick = { expanded = true }) { Text("▼") } }
+                        )
+                        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                            com.example.wetpka.data.MockData.fishes.forEach { fish ->
+                                DropdownMenuItem(
+                                    text = { Text(fish.name) },
+                                    onClick = { species = fish.name; expanded = false }
+                                )
+                            }
+                        }
+                    }
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(value = pieces, onValueChange = { pieces = it }, label = { Text("Sztuki") }, modifier = Modifier.weight(1f))
+                        OutlinedTextField(value = weight, onValueChange = { weight = it }, label = { Text("Waga (kg)") }, modifier = Modifier.weight(1f))
+                        OutlinedTextField(value = length, onValueChange = { length = it }, label = { Text("Długość") }, modifier = Modifier.weight(1f))
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    val newRecord = com.example.wetpka.data.CatchRecord(
+                        date = date, time = time, spotNumber = spot, fishSpecies = species,
+                        pieces = pieces.toIntOrNull() ?: 1, totalWeight = weight.toDoubleOrNull() ?: 0.0, length = length.toDoubleOrNull() ?: 0.0
+                    )
+                    // Zapisujemy do bazy w tle
+                    coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                        catchDao.insertCatch(newRecord)
+                    }
+                    showAddDialog = false
+                }) { Text("Zapisz") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAddDialog = false }) { Text("Anuluj") }
+            }
+        )
     }
 }
 
@@ -520,3 +669,4 @@ fun ProfileScreen() {
         Text("Tu będzie Legitymacja")
     }
 }
+
