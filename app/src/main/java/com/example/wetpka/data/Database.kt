@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.*
 import kotlinx.coroutines.flow.Flow
 
+
 // 1. Tabela w bazie danych
 @Entity(tableName = "catches")
 data class CatchRecord(
