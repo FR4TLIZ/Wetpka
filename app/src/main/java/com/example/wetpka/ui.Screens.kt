@@ -525,10 +525,7 @@ fun LogbookScreen() {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Rejestr Połowów", fontWeight = FontWeight.Bold) },
-                actions = {
-                    IconButton(onClick = { }) { Icon(Icons.Default.Search, contentDescription = "Szukaj") }
-                }
+                title = { Text("Rejestr Połowów", fontWeight = FontWeight.Bold) }
             )
         },
         floatingActionButton = {
