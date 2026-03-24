@@ -1,6 +1,7 @@
 package com.example.wetpka.ui
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -12,6 +13,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -246,7 +249,7 @@ fun FishDetailScreen(fishId: Int, onBackClick: () -> Unit) {
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(
-                        text = "Regulacje Wędkarskie",
+                        text = "Regulacje wędkarskie",
                         fontWeight = FontWeight.Bold,
                         fontSize = 18.sp,
                         modifier = Modifier.padding(bottom = 12.dp)
@@ -257,12 +260,12 @@ fun FishDetailScreen(fishId: Int, onBackClick: () -> Unit) {
                     ) {
                         RegulationItem(
                             modifier = Modifier.weight(1f),
-                            title = "Wymiar Ochronny",
+                            title = "Wymiar ochronny",
                             value = fish.protectionSize
                         )
                         RegulationItem(
                             modifier = Modifier.weight(1f),
-                            title = "Limit Dobowy",
+                            title = "Limit dobowy",
                             value = fish.dailyLimit
                         )
                     }
@@ -273,12 +276,12 @@ fun FishDetailScreen(fishId: Int, onBackClick: () -> Unit) {
                     ) {
                         RegulationItem(
                             modifier = Modifier.weight(1f),
-                            title = "Okres Ochronny",
+                            title = "Okres ochronny",
                             value = fish.protectionPeriod
                         )
                         RegulationItem(
                             modifier = Modifier.weight(1f),
-                            title = "Czas Tarła",
+                            title = "Czas tarła",
                             value = fish.spawningTime
                         )
                     }
@@ -296,18 +299,18 @@ fun FishDetailScreen(fishId: Int, onBackClick: () -> Unit) {
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(
-                        text = "Informacje i Siedlisko",
+                        text = "Informacje i siedlisko",
                         fontWeight = FontWeight.Bold,
                         fontSize = 18.sp,
                         modifier = Modifier.padding(bottom = 12.dp)
                     )
-                    InfoItem(label = "Regiony Występowania", value = fish.regions)
+                    InfoItem(label = "Regiony występowania", value = fish.regions)
                     Spacer(modifier = Modifier.height(8.dp))
-                    InfoItem(label = "Preferowane Akweny", value = fish.habitat)
+                    InfoItem(label = "Preferowane akweny", value = fish.habitat)
                     Spacer(modifier = Modifier.height(8.dp))
-                    InfoItem(label = "Dobre Brania", value = fish.goodBites)
+                    InfoItem(label = "Dobre brania", value = fish.goodBites)
                     Spacer(modifier = Modifier.height(8.dp))
-                    InfoItem(label = "Słabe Brania", value = fish.badBites)
+                    InfoItem(label = "Słabe brania", value = fish.badBites)
                 }
             }
 
@@ -513,82 +516,100 @@ fun WaterBodyCard(waterBody: WaterBody, userLocation: android.location.Location?
 @Composable
 fun LogbookScreen() {
     val context = androidx.compose.ui.platform.LocalContext.current
-    // Podłączamy bazę danych
     val db = remember { com.example.wetpka.data.AppDatabase.getDatabase(context) }
     val catchDao = db.catchDao()
-    // Pobieramy listę połowów, która automatycznie się aktualizuje!
     val catches by catchDao.getAllCatches().collectAsState(initial = emptyList())
-    // Stan do obsługi wyskakującego okienka dodawania
+
+    val sortedCatches = catches.sortedByDescending { record ->
+        try {
+            java.text.SimpleDateFormat("dd.MM.yyyy HH:mm", java.util.Locale.getDefault())
+                .parse("${record.date} ${record.time}")?.time ?: 0L
+        } catch (e: Exception) {
+            0L
+        }
+    }
+
     var showAddDialog by remember { mutableStateOf(false) }
+    var showVideoPlayer by remember { mutableStateOf(false) }
+    var recordToEdit by remember { mutableStateOf<com.example.wetpka.data.CatchRecord?>(null) }
     val coroutineScope = rememberCoroutineScope()
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Rejestr Połowów", fontWeight = FontWeight.Bold) }
+                title = { Text("Rejestr połowów", fontWeight = FontWeight.Bold) },
+                actions = {
+                    IconButton(onClick = {
+                        recordToEdit = null
+                        showAddDialog = true
+                    }) {
+                        Icon(
+                            imageVector = androidx.compose.material.icons.Icons.Default.Add,
+                            contentDescription = "Dodaj połów",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+                }
             )
-        },
-        floatingActionButton = {
-            // Przycisk PLUS w prawym dolnym rogu
-            FloatingActionButton(
-                onClick = { showAddDialog = true },
-                containerColor = MaterialTheme.colorScheme.primary
-            ) {
-                Text("+", fontSize = 24.sp, color = MaterialTheme.colorScheme.onPrimary)
-            }
         }
     ) { innerPadding ->
         Column(modifier = Modifier.padding(innerPadding).fillMaxSize().padding(horizontal = 16.dp)) {
 
-            // 1. Zastępstwo wideo-poradnika
             Card(
                 modifier = Modifier.fillMaxWidth().height(180.dp).padding(bottom = 16.dp),
                 shape = MaterialTheme.shapes.large,
-                colors = CardDefaults.cardColors(containerColor = androidx.compose.ui.graphics.Color.DarkGray)
+                onClick = { showVideoPlayer = true }
             ) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    androidx.compose.foundation.Image(
+                        painter = painterResource(id = com.example.wetpka.R.drawable.rejestr),
+                        contentDescription = "Tło poradnika",
+                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                    Box(modifier = Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.4f)))
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Icon(
                             painter = painterResource(android.R.drawable.ic_media_play),
-                            contentDescription = "Play",
-                            modifier = Modifier.size(64.dp),
-                            tint = androidx.compose.ui.graphics.Color.White
+                            contentDescription = "Play", modifier = Modifier.size(64.dp), tint = androidx.compose.ui.graphics.Color.White
                         )
                         Text(
-                            text = "Poradnik Wideo: Jak prowadzić Rejestr",
-                            color = androidx.compose.ui.graphics.Color.White,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(top = 8.dp)
+                            text = "Poradnik wideo: jak prowadzić rejestr",
+                            color = androidx.compose.ui.graphics.Color.White, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp)
                         )
                     }
                 }
             }
 
-            // 2. Nagłówki Tabeli
             Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("L.p.", fontWeight = FontWeight.Bold, fontSize = 12.sp, modifier = Modifier.weight(0.5f))
-                Text("Data", fontWeight = FontWeight.Bold, fontSize = 12.sp, modifier = Modifier.weight(1f))
-                Text("Godzina", fontWeight = FontWeight.Bold, fontSize = 12.sp, modifier = Modifier.weight(1f))
-                Text("Łowisko", fontWeight = FontWeight.Bold, fontSize = 12.sp, modifier = Modifier.weight(1f))
-                Text("Gatunek", fontWeight = FontWeight.Bold, fontSize = 12.sp, modifier = Modifier.weight(1f))
-                Text("Szt", fontWeight = FontWeight.Bold, fontSize = 12.sp, modifier = Modifier.weight(0.5f))
-                Text("Waga", fontWeight = FontWeight.Bold, fontSize = 12.sp, modifier = Modifier.weight(0.8f))
-                Text("Dł.", fontWeight = FontWeight.Bold, fontSize = 12.sp, modifier = Modifier.weight(0.6f))
+                Text("Data", fontWeight = FontWeight.Bold, fontSize = 11.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.weight(1.5f))
+                Text("Godz.", fontWeight = FontWeight.Bold, fontSize = 11.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.weight(0.9f))
+                Text("Łowisko", fontWeight = FontWeight.Bold, fontSize = 11.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.weight(1.1f))
+                Text("Gatunek", fontWeight = FontWeight.Bold, fontSize = 11.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.weight(1.2f))
+                Text("Szt.", fontWeight = FontWeight.Bold, fontSize = 11.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.weight(0.6f))
+                Text("Waga", fontWeight = FontWeight.Bold, fontSize = 11.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.weight(0.9f))
+                Text("Dł.", fontWeight = FontWeight.Bold, fontSize = 11.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.weight(0.8f))
             }
 
-            // 3. Właściwa lista ryb z bazy danych
             androidx.compose.foundation.lazy.LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                itemsIndexed(catches) { index, record ->
-                    ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+                items(sortedCatches) { record ->
+                    ElevatedCard(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                recordToEdit = record
+                                showAddDialog = true
+                            }
+                    ) {
                         Row(modifier = Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text("${index + 1}", fontSize = 12.sp, modifier = Modifier.weight(0.5f))
-                            Text(record.date, fontSize = 12.sp, modifier = Modifier.weight(1f))
-                            Text(record.time, fontSize = 12.sp, modifier = Modifier.weight(1f))
-                            Text(record.spotNumber, fontSize = 12.sp, modifier = Modifier.weight(1f))
-                            Text(record.fishSpecies, fontSize = 12.sp, modifier = Modifier.weight(1f))
-                            Text("${record.pieces}", fontSize = 12.sp, modifier = Modifier.weight(0.5f))
-                            Text("${record.totalWeight}", fontSize = 12.sp, modifier = Modifier.weight(0.8f))
-                            Text("${record.length}", fontSize = 12.sp, modifier = Modifier.weight(0.6f))
+                            Text(record.date, fontSize = 11.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.weight(1.5f))
+                            Text(record.time, fontSize = 11.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.weight(0.9f))
+                            Text(record.spotNumber, fontSize = 11.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.weight(1.1f))
+                            Text(record.fishSpecies, fontSize = 11.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.weight(1.2f))
+                            Text("${record.pieces}", fontSize = 11.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.weight(0.6f))
+                            Text("${record.totalWeight}", fontSize = 11.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.weight(0.9f))
+                            Text("${record.length}", fontSize = 11.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.weight(0.8f))
                         }
                     }
                 }
@@ -596,65 +617,204 @@ fun LogbookScreen() {
         }
     }
 
-    // Okienko dialogowe dodawania połowu
-    if (showAddDialog) {
-        var date by remember { mutableStateOf("16.10.2023") }
-        var time by remember { mutableStateOf("12:00") }
-        var spot by remember { mutableStateOf("18") }
-        var species by remember { mutableStateOf(com.example.wetpka.data.MockData.fishes[0].name) }
-        var pieces by remember { mutableStateOf("1") }
-        var weight by remember { mutableStateOf("2.0") }
-        var length by remember { mutableStateOf("50") }
+    if (showVideoPlayer) {
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { showVideoPlayer = false },
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Box(modifier = Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color.Black)) {
+                androidx.compose.ui.viewinterop.AndroidView(
+                    modifier = Modifier.fillMaxSize(),
+                    factory = { ctx ->
+                        android.widget.VideoView(ctx).apply {
+                            setMediaController(android.widget.MediaController(ctx).apply { setAnchorView(this@apply) })
+                            setVideoURI(android.net.Uri.parse("android.resource://${ctx.packageName}/${com.example.wetpka.R.raw.vid}"))
+                            start()
+                        }
+                    }
+                )
+                IconButton(onClick = { showVideoPlayer = false }, modifier = Modifier.align(Alignment.TopEnd).padding(16.dp)) {
+                    Icon(imageVector = androidx.compose.material.icons.Icons.Default.Close, contentDescription = "Zamknij", tint = androidx.compose.ui.graphics.Color.Black, modifier = Modifier.size(32.dp))
+                }
+            }
+        }
+    }
 
-        var expanded by remember { mutableStateOf(false) } // Do rozwijanej listy gatunków
+    if (showAddDialog) {
+        val currentDate = java.text.SimpleDateFormat("dd.MM.yyyy", java.util.Locale.getDefault()).format(java.util.Date())
+        val currentTime = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date())
+
+        var date by remember { mutableStateOf(recordToEdit?.date ?: currentDate) }
+        var time by remember { mutableStateOf(recordToEdit?.time ?: currentTime) }
+        var spot by remember { mutableStateOf(recordToEdit?.spotNumber ?: "") }
+        var species by remember { mutableStateOf(recordToEdit?.fishSpecies ?: com.example.wetpka.data.MockData.fishes[0].name) }
+        var pieces by remember { mutableStateOf(recordToEdit?.pieces?.toString() ?: "1") }
+        var weight by remember { mutableStateOf(recordToEdit?.totalWeight?.toString() ?: "") }
+        var length by remember { mutableStateOf(recordToEdit?.length?.toString() ?: "") }
+
+        var expanded by remember { mutableStateOf(false) }
+        var errorMessage by remember { mutableStateOf<String?>(null) }
+
+        val calendar = java.util.Calendar.getInstance()
+
+        // 1. Zabezpieczenie Kalendarza (maxDate ustawione na teraz)
+        val datePickerDialog = android.app.DatePickerDialog(
+            context,
+            { _, year, month, dayOfMonth ->
+                date = String.format(java.util.Locale.getDefault(), "%02d.%02d.%04d", dayOfMonth, month + 1, year)
+            },
+            calendar.get(java.util.Calendar.YEAR),
+            calendar.get(java.util.Calendar.MONTH),
+            calendar.get(java.util.Calendar.DAY_OF_MONTH)
+        ).apply {
+            datePicker.maxDate = System.currentTimeMillis()
+        }
+
+        val timePickerDialog = android.app.TimePickerDialog(
+            context,
+            { _, hourOfDay, minute ->
+                time = String.format(java.util.Locale.getDefault(), "%02d:%02d", hourOfDay, minute)
+            },
+            calendar.get(java.util.Calendar.HOUR_OF_DAY),
+            calendar.get(java.util.Calendar.MINUTE),
+            true
+        )
 
         AlertDialog(
-            onDismissRequest = { showAddDialog = false },
-            title = { Text("Dodaj nowy połów") },
+            onDismissRequest = {
+                showAddDialog = false
+                recordToEdit = null
+            },
+            title = { Text(if (recordToEdit == null) "Dodaj nowy połów" else "Edytuj połów") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(value = date, onValueChange = { date = it }, label = { Text("Data") })
-                    OutlinedTextField(value = time, onValueChange = { time = it }, label = { Text("Godzina") })
-                    OutlinedTextField(value = spot, onValueChange = { spot = it }, label = { Text("Nr łowiska") })
+                    if (errorMessage != null) {
+                        Text(text = errorMessage!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 4.dp))
+                    }
 
-                    // Rozwijana lista ryb
+                    Box {
+                        OutlinedTextField(
+                            value = date, onValueChange = {}, label = { Text("Data") },
+                            readOnly = true, singleLine = true, modifier = Modifier.fillMaxWidth(),
+                            trailingIcon = { Text("") }
+                        )
+                        Box(modifier = Modifier.matchParentSize().clickable { datePickerDialog.show() })
+                    }
+
+                    Box {
+                        OutlinedTextField(
+                            value = time, onValueChange = {}, label = { Text("Godzina") },
+                            readOnly = true, singleLine = true, modifier = Modifier.fillMaxWidth(),
+                            trailingIcon = { Text("") }
+                        )
+                        Box(modifier = Modifier.matchParentSize().clickable { timePickerDialog.show() })
+                    }
+
+                    OutlinedTextField(value = spot, onValueChange = { spot = it }, label = { Text("Nr łowiska") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+
                     Box {
                         OutlinedTextField(
                             value = species, onValueChange = {}, label = { Text("Gatunek (Z Atlasu)") },
-                            readOnly = true, trailingIcon = { IconButton(onClick = { expanded = true }) { Text("▼") } }
+                            readOnly = true, trailingIcon = { IconButton(onClick = { expanded = true }) { Text("▼") } },
+                            modifier = Modifier.fillMaxWidth()
                         )
                         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                             com.example.wetpka.data.MockData.fishes.forEach { fish ->
-                                DropdownMenuItem(
-                                    text = { Text(fish.name) },
-                                    onClick = { species = fish.name; expanded = false }
-                                )
+                                DropdownMenuItem(text = { Text(fish.name) }, onClick = { species = fish.name; expanded = false })
                             }
                         }
                     }
 
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedTextField(value = pieces, onValueChange = { pieces = it }, label = { Text("Sztuki") }, modifier = Modifier.weight(1f))
-                        OutlinedTextField(value = weight, onValueChange = { weight = it }, label = { Text("Waga (kg)") }, modifier = Modifier.weight(1f))
-                        OutlinedTextField(value = length, onValueChange = { length = it }, label = { Text("Długość") }, modifier = Modifier.weight(1f))
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        OutlinedTextField(
+                            value = pieces, onValueChange = { pieces = it },
+                            label = { Text("Sztuki", fontSize = 10.sp, maxLines = 1, softWrap = false) },
+                            modifier = Modifier.weight(0.7f), singleLine = true
+                        )
+                        OutlinedTextField(
+                            value = weight, onValueChange = { weight = it },
+                            label = { Text("Waga (kg)", fontSize = 10.sp, maxLines = 1, softWrap = false) },
+                            modifier = Modifier.weight(1f), singleLine = true
+                        )
+                        OutlinedTextField(
+                            value = length, onValueChange = { length = it },
+                            label = { Text("Długość (cm)", fontSize = 10.sp, maxLines = 1, softWrap = false) },
+                            modifier = Modifier.weight(1.2f), singleLine = true
+                        )
                     }
                 }
             },
             confirmButton = {
                 Button(onClick = {
-                    val newRecord = com.example.wetpka.data.CatchRecord(
-                        date = date, time = time, spotNumber = spot, fishSpecies = species,
-                        pieces = pieces.toIntOrNull() ?: 1, totalWeight = weight.toDoubleOrNull() ?: 0.0, length = length.toDoubleOrNull() ?: 0.0
-                    )
-                    // Zapisujemy do bazy w tle
-                    coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                        catchDao.insertCatch(newRecord)
+                    val p = pieces.toIntOrNull() ?: 1
+                    val w = weight.replace(",", ".").toDoubleOrNull()
+                    val l = length.replace(",", ".").toDoubleOrNull()
+
+                    if (w == null || w < 0.01 || w > 999.0) { errorMessage = "Waga musi być liczbą z przedziału 0.01 - 999 kg."; return@Button }
+                    if (l == null || l < 1.0 || l > 999.0) { errorMessage = "Długość musi być liczbą z przedziału 1 - 999 cm."; return@Button }
+
+                    // 2. Walidacja Czasu z przyszłości
+                    val selectedDateTime = try {
+                        java.text.SimpleDateFormat("dd.MM.yyyy HH:mm", java.util.Locale.getDefault()).parse("$date $time")
+                    } catch (e: Exception) { null }
+
+                    if (selectedDateTime != null && selectedDateTime.after(java.util.Date())) {
+                        errorMessage = "Nie można zapisać połowu z przyszłości!"
+                        return@Button
                     }
+
+                    val roundedWeight = kotlin.math.round(w * 10.0) / 10.0
+                    val roundedLength = kotlin.math.round(l * 10.0) / 10.0
+
+                    val currentRecordId = recordToEdit?.id ?: 0
+                    val isEditMode = recordToEdit != null
+
+                    val finalSpot = if (spot.trim().isEmpty()) "-" else spot.trim()
+
+                    val newRecord = com.example.wetpka.data.CatchRecord(
+                        id = currentRecordId,
+                        date = date, time = time, spotNumber = finalSpot, fishSpecies = species,
+                        pieces = p, totalWeight = roundedWeight, length = roundedLength
+                    )
+
+                    coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                        if (!isEditMode) {
+                            val mediaPlayer = android.media.MediaPlayer.create(context, com.example.wetpka.R.raw.gulp)
+                            mediaPlayer.setVolume(1.0f, 1.0f)
+                            mediaPlayer.start()
+                            mediaPlayer.setOnCompletionListener { it.release() }
+                            catchDao.insertCatch(newRecord)
+                        } else {
+                            catchDao.updateCatch(newRecord)
+                        }
+                    }
+
                     showAddDialog = false
+                    recordToEdit = null
+                    errorMessage = null
                 }) { Text("Zapisz") }
             },
             dismissButton = {
-                TextButton(onClick = { showAddDialog = false }) { Text("Anuluj") }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (recordToEdit != null) {
+                        TextButton(onClick = {
+                            val recordToDelete = recordToEdit
+                            if (recordToDelete != null) {
+                                coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                    catchDao.deleteCatch(recordToDelete)
+                                }
+                            }
+                            showAddDialog = false
+                            recordToEdit = null
+                        }) { Text("Usuń", color = MaterialTheme.colorScheme.error) }
+                    }
+
+                    TextButton(onClick = {
+                        showAddDialog = false
+                        recordToEdit = null
+                        errorMessage = null
+                    }) { Text("Anuluj") }
+                }
             }
         )
     }

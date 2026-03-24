@@ -24,9 +24,15 @@ interface CatchDao {
     fun getAllCatches(): Flow<List<CatchRecord>>
 
     @Insert
-    fun insertCatch(catchRecord: CatchRecord): Long
-}
+    suspend fun insertCatch(catchRecord: CatchRecord): Long
 
+    // DODAJ TE DWIE FUNKCJE:
+    @Update
+    suspend fun updateCatch(catchRecord: CatchRecord): Int
+
+    @Delete
+    suspend fun deleteCatch(catchRecord: CatchRecord): Int
+}
 // 3. Główna klasa Bazy Danych
 @Database(entities = [CatchRecord::class], version = 1, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
