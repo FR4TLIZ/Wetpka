@@ -53,11 +53,7 @@ Aplikacja mobilna dla wędkarzy zrzeszonych w PZW (Polskim Związku Wędkarskim)
 
 ## Budowanie projektu
 
-```bash
-git clone <url-repozytorium>
-cd WedPKA
-./gradlew assembleDebug
-```
+Projekt do tej pory budowany i uruchamiany był w Android Studio.
 
 APK debug znajdzie się w `app/build/outputs/apk/debug/app-debug.apk`.
 
